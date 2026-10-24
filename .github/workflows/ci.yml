@@ -1,0 +1,37 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck -x scripts/*.sh primary/*.sh replica/*.sh
+      - name: validate compose file
+        run: |
+          cp .env.example .env
+          docker compose config -q
+
+  smoke:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: start cluster
+        run: |
+          cp .env.example .env
+          docker compose up -d --wait
+      - name: both replicas streaming
+        run: ./scripts/assert_streaming.sh
+      - name: replication status
+        run: ./scripts/check_replication.sh
+      - name: logs on failure
+        if: failure()
+        run: docker compose logs
+      - name: tear down
+        if: always()
+        run: docker compose down -v
